@@ -44,7 +44,7 @@ def get_url_keywords(url):
     article.nlp()
     keywords = article.keywords
     if not keywords:
-        keywords = article.title
+        keywords = article.title.split(' ')
     query = '({})'.format(' OR '.join(keywords))
     return query
 
@@ -219,8 +219,8 @@ def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=Fals
         media_ids = []
     print(status)
     if tweet_id:
-        pass
-        #api.update_status('@{} {}'.format(user, status), media_ids=media_ids, in_reply_to_status_id=tweet_id)
+        #pass
+        api.update_status('@{} {}'.format(user, status), media_ids=media_ids, in_reply_to_status_id=tweet_id)
     else:
         #pass
         api.update_status(status, media_ids=media_ids)
