@@ -29,5 +29,5 @@ for tweet in mentions[::-1]:
         tweet_json = json.dumps(tweet._json)
         #print(tweet_json)
         result = tweet_queue.enqueue(process_tweet, tweet_json)
-    # redis_client.set('newsbot_last_tweet_id', tweet.id_str)
+    redis_client.set('newsbot_last_tweet_id', tweet.id_str)
 
