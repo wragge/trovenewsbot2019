@@ -1,0 +1,11 @@
+arrow==0.14.2
+beautifulsoup4==4.7.1
+feedparser==5.2.1
+lxml==4.3.3
+newspaper3k==0.2.8
+Pillow==6.0.0
+redis==3.2.1
+requests==2.22.0
+rq==1.0
+tweepy==3.7.0
+
