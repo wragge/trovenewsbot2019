@@ -11,6 +11,7 @@ from io import BytesIO
 import re
 import json
 import os
+import argparse
 from newspaper import Article
 from credentials import *
 
@@ -484,3 +485,12 @@ def reply_abc():
         if article:
             message = 'Found in response to @abcnews latest at {}!'.format(latest_url)
             send_tweet(article, message, user=None, tweet_id=None, illustrated=False)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('task')
+    args = parser.parse_args()
+    if args.task == 'random':
+        random_tweet()
+    elif args.task == 'abc':
+        reply_abc()
