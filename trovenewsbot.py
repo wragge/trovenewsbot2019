@@ -461,7 +461,10 @@ def reply_abc():
     trove_url = None
     news = feedparser.parse(ABC_RSS)
     latest_url = news.entries[0].link
-    last_url = redis_client.get('last_abc_link').decode('utf-8')
+    try:
+        last_url = redis_client.get('last_abc_link').decode('utf-8')
+    except AttributeError:
+        last_url = None
     if latest_url != last_url:
         redis_client.set('last_abc_link', latest_url)
         query = get_url_keywords(latest_url)
