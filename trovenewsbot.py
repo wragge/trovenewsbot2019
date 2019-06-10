@@ -210,7 +210,7 @@ def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=Fals
         media_ids = [media_response.media_id]
         article_date = arrow.get(article['date'], 'YYYY-MM-DD').format('D MMM YYYY')
         newspaper = re.sub(r'\(.+?\)$', '', article['title']['value']).strip()
-        chars = 250 - (len(message) + len(article_date) + len(newspaper) + 9)
+        chars = 240 - (len(message) + len(article_date) + len(newspaper) + 10)
         title = article['heading']
         if len(title) > chars:
             title = '{}…'.format(article['heading'][:chars])
