@@ -125,9 +125,11 @@ def parse_tweet(tweet):
     article_id = None
     categories = []
     sort = 'relevance'
-    text = tweet['text'].strip()
-    query = text[14:].replace(u'\u201c', '"').replace(u'\u201d', '"').replace(u'\u2019', "'")
-    if re.search(r'\bhello\b', text, re.IGNORECASE):
+    query = tweet['text'].strip()
+    # Remove @trovenewsbot from tweet
+    query = re.sub(r'\@trovenewsbot', '', query, flags=re.IGNORECASE).strip()
+    query = query.replace(u'\u201c', '"').replace(u'\u201d', '"').replace(u'\u2019', "'")
+    if re.search(r'\bhello\b', query, flags=re.IGNORECASE):
         query = ''
         random = True
         hello = True
@@ -137,30 +139,39 @@ def parse_tweet(tweet):
             query = query.replace('#luckydip', '').strip()
             random = True
         if '#illustrated' in query:
-            # Get a random article
+            # Get an illustrated
             query = query.replace('#illustrated', '').strip()
             illustrated = True
         if '#earliest' in query:
+            # Sort by date ascending
             query = query.replace('#earliest', '').strip()
             sort = 'dateasc'
         if '#latest' in query:
+            # Sort by date descending
             query = query.replace('#latest', '').strip()
             sort = 'datedesc'
         if '#article' in query:
+            # Limit to Article category
             query = query.replace('#article', '').strip()
             categories.append('Article')
         if '#advertising' in query:
+            # Limit to advertising category
             query = query.replace('#advertising', '').strip()
             categories.append('Advertising')
         if '#id' in query:
+            # Get a specific article
             query = query.replace('#id', '').strip()
             article_id = extract_id(query)
+        # Check to see if there's a url in the tweet
         url = get_url(tweet)
+        # If so, extract keywords and build search
         if url:
             query = get_url_keywords(url)
         else:
+            # Check if there's a year, if so add date limit to search
             if '#year' in query:
                 query = extract_date(query)
+            # If #any then make a OR query
             else:
                 query = check_for_any(query)
     return (query, sort, random, illustrated, article_id, categories, hello)
@@ -187,15 +198,21 @@ def reply_article(query, sort, random, illustrated, categories):
         article = get_article(query, random=random, sort=sort, illustrated=illustrated, categories=categories)
     else:
         retries = 0
+        # This is to filter out 'Coming soon' articles with no url
         while not trove_url:
             if retries < 60:
                 article = get_article(query, random=random, sort=sort, illustrated=illustrated, categories=categories)
+                # On error or no results
+                if article is None:
+                    break
+                # Check if there's a url
+                # If not try again
                 try:
                     trove_url = article['troveUrl']
                 except (KeyError, TypeError):
                     pass
-                retries += 1
-                time.sleep(1)
+                    time.sleep(1)
+                    retries += 1
             else:
                 article = None
                 break
@@ -210,7 +227,13 @@ def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=Fals
         media_ids = [media_response.media_id]
         article_date = arrow.get(article['date'], 'YYYY-MM-DD').format('D MMM YYYY')
         newspaper = re.sub(r'\(.+?\)$', '', article['title']['value']).strip()
-        chars = 240 - (len(message) + len(article_date) + len(newspaper) + 10)
+        if '@abcnews' in message:
+            message_length = 65
+        elif user:
+            message_length = len(message) + len(user) + 2
+        else:
+            message_length = len(message)
+        chars = 240 - (message_length + len(article_date) + len(newspaper) + 10)
         title = article['heading']
         if len(title) > chars:
             title = '{}…'.format(article['heading'][:chars])
@@ -320,12 +343,21 @@ def get_article(query, random=False, start=0, sort='relevance', illustrated=Fals
             params = get_random_decade(illustrated=illustrated, categories=['Article'])
             params['reclevel'] = 'full'
     print(params)
-    response = requests.get('https://api.trove.nla.gov.au/result', params=params)
-    data = response.json()
     try:
-        article = data['response']['zone'][0]['records']['article'][0]
-    except (KeyError, IndexError, TypeError):
+        response = requests.get('https://api.trove.nla.gov.au/result', params=params, timeout=60)
+        response.raise_for_status()
+    except requests.exceptions.RequestException:
         article = None
+    else:
+        try:
+            data = response.json()
+        except json.decoder.JSONDecodeError:
+            article = None
+        else:
+            try:
+                article = data['response']['zone'][0]['records']['article'][0]
+            except (KeyError, IndexError, TypeError):
+                article = None
     return article
 
 
@@ -335,13 +367,15 @@ def random_tweet():
 
 
 def random_article(illustrated=False, categories=[]):
-    # updated, illustrated -> newspaper, newspaper -> decade
+    # Options for random searches
     options = ['updated', 'any', 'illustrated']
     option = random.choice(options)
     print(option)
+    # If user has specified illustrated - then make sure it's illustrated no matter what option chosen
     if illustrated is True:
         query = None
     elif option == 'updated':
+        # Get articles modified in the last day
         now = arrow.utcnow()
         yesterday = now.shift(days=-1)
         date = '{}T00:00:00Z'.format(yesterday.format('YYYY-MM-DD'))
@@ -356,15 +390,18 @@ def random_article(illustrated=False, categories=[]):
     while not trove_url:
         if retries < 60:
             article = get_article(query, random=True, illustrated=illustrated, categories=categories)
+            # On error or no results
+            if article is None:
+                break
+            # Check if there's a url
+            # If not try again
             try:
                 trove_url = article['troveUrl']
             except (KeyError, TypeError):
-                pass
-            retries += 1
-            time.sleep(1)
+                time.sleep(1)
+                retries += 1
         else:
             article = None
-            message = 'Error! I was unable to obtain an article!'
             break
     if article:
         if query and int(article['correctionCount']) > 0:
@@ -373,6 +410,8 @@ def random_article(illustrated=False, categories=[]):
             message = 'New!'
         else:
             message = 'Found!'
+    else:
+        message = 'Error! I was unable to obtain an article!'
     return (article, message, illustrated)
 
 
