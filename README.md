@@ -10,6 +10,8 @@ This is the latest version of @TroveNewsBot which includes a number of new or en
 * Serendipify your life with randomly-selected articles!
 * Automatically search Trove based on the contents of any web page!
 
+![Tweet screenshot](images/trovenewsbot.png)
+
 For an earlier incarnation of TroveNewsBot [see this repository](https://github.com/wragge/trovenewsbot).
 
 ## Search Trove newspapers
