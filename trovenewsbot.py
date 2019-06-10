@@ -25,6 +25,19 @@ redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 START_YEAR = 1803
 END_YEAR = 1995
 ABC_RSS = 'https://www.abc.net.au/news/feed/51120/rss.xml'
+GUARDIAN_RSS = 'https://www.theguardian.com/australia-news/rss'
+NEWS_FEEDS = [
+    {
+        'rss': 'https://www.abc.net.au/news/feed/51120/rss.xml',
+        'source': 'abc',
+        'handle': '@abcnews'
+    },
+    {
+        'rss': 'https://www.theguardian.com/australia-news/rss',
+        'source': 'guardian',
+        'handle': '@GuardianAus'
+    }
+]
 
 def get_url(tweet):
     urls = tweet['entities']['urls']
@@ -229,6 +242,8 @@ def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=Fals
         newspaper = re.sub(r'\(.+?\)$', '', article['title']['value']).strip()
         if '@abcnews' in message:
             message_length = 65
+        elif '@GuardianAus' in message:
+            message_length = 70
         elif user:
             message_length = len(message) + len(user) + 2
         else:
@@ -498,15 +513,16 @@ def get_page_thumbnail(article_id, size, illustrated=False):
     return cropped_file
 
 def reply_abc():
+    feed = random.choice(NEWS_FEEDS)
     trove_url = None
-    news = feedparser.parse(ABC_RSS)
+    news = feedparser.parse(feed['rss'])
     latest_url = news.entries[0].link
     try:
-        last_url = redis_client.get('last_abc_link').decode('utf-8')
+        last_url = redis_client.get('last_{}_link'.format(feed['source'])).decode('utf-8')
     except AttributeError:
         last_url = None
     if latest_url != last_url:
-        redis_client.set('last_abc_link', latest_url)
+        redis_client.set('last_{}_link'.format(feed['source']), latest_url)
         query = get_url_keywords(latest_url)
         retries = 0
         while not trove_url:
@@ -522,7 +538,7 @@ def reply_abc():
                 article = None
                 break
         if article:
-            message = 'Found in response to @abcnews latest at {}!'.format(latest_url)
+            message = 'Found in response to {} latest at {}!'.format(feed['handle'], latest_url)
             send_tweet(article, message, user=None, tweet_id=None, illustrated=False)
 
 if __name__ == '__main__':
