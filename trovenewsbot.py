@@ -48,9 +48,9 @@ NEWS_FEEDS = [
     }
 ]
 
-json_path = Path('./stopwords.json')
-print(json_path)
-with json_path.open() as json_file:
+print(os.path.realpath(__file__))
+
+with open('stopwords.json', 'r') as json_file:
     STOPWORDS = json.load(json_file)
 
 def get_url(tweet):
