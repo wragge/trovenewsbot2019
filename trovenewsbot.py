@@ -14,6 +14,13 @@ import os
 import argparse
 from newspaper import Article
 from credentials import *
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
+s = requests.Session()
+retries = Retry(total=5, backoff_factor=1, status_forcelist=[ 502, 503, 504 ])
+s.mount('https://', HTTPAdapter(max_retries=retries))
+s.mount('http://', HTTPAdapter(max_retries=retries))
 
 auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
 auth.set_access_token(access_token_key, access_token_secret)
@@ -22,6 +29,7 @@ api = tweepy.API(auth)
 
 redis_client = redis.StrictRedis(host='localhost', port=6379, db=0)
 
+API_URL = 'http://api.trove.nla.gov.au/v2/result'
 START_YEAR = 1803
 END_YEAR = 1995
 ABC_RSS = 'https://www.abc.net.au/news/feed/51120/rss.xml'
@@ -38,6 +46,9 @@ NEWS_FEEDS = [
         'handle': '@GuardianAus'
     }
 ]
+
+with open('stopwords.json', 'r') as json_file:
+    STOPWORDS = json.load(json_file)
 
 def get_url(tweet):
     urls = tweet['entities']['urls']
@@ -95,7 +106,7 @@ def process_tweet(tweet_json):
     tweet = json.loads(tweet_json)
     tweet_id = tweet['id']
     user = tweet['user']['screen_name']
-    query, sort, random, illustrated, article_id, categories, hello = parse_tweet(tweet)
+    query, sort, random, illustrated, article_id, category, hello = parse_tweet(tweet)
     if hello is True:
         article, message, illustrated = random_article()
         if article:
@@ -103,7 +114,7 @@ def process_tweet(tweet_json):
         else:
             message = 'Greetings human! Feed me keywords to search newspapers.'
     elif not query:
-        article, message, illustrated = random_article(illustrated=illustrated, categories=categories)
+        article, message, illustrated = random_article(illustrated=illustrated, category=category)
         if article:
             message = 'No search terms detected! Enjoy this random selection.'
     elif article_id:
@@ -120,7 +131,7 @@ def process_tweet(tweet_json):
                 if article:
                     message = 'Not found! Enjoy this random selection.'
     else:
-        article = reply_article(query=query, sort=sort, random=random, illustrated=illustrated, categories=categories)
+        article = reply_article(query=query, sort=sort, random=random, illustrated=illustrated, category=category)
         message = ''
         if not article:
             article, message, illustrated = random_article()
@@ -136,7 +147,7 @@ def parse_tweet(tweet):
     hello = False
     illustrated = False
     article_id = None
-    categories = []
+    category = None
     sort = 'relevance'
     query = tweet['text'].strip()
     # Remove @trovenewsbot from tweet
@@ -154,7 +165,7 @@ def parse_tweet(tweet):
         if '#illustrated' in query:
             # Get an illustrated
             query = query.replace('#illustrated', '').strip()
-            illustrated = True
+            illustrated = 'true'
         if '#earliest' in query:
             # Sort by date ascending
             query = query.replace('#earliest', '').strip()
@@ -166,11 +177,11 @@ def parse_tweet(tweet):
         if '#article' in query:
             # Limit to Article category
             query = query.replace('#article', '').strip()
-            categories.append('Article')
+            category = 'Article'
         if '#advertising' in query:
             # Limit to advertising category
             query = query.replace('#advertising', '').strip()
-            categories.append('Advertising')
+            category = 'Advertising'
         if '#id' in query:
             # Get a specific article
             query = query.replace('#id', '').strip()
@@ -187,7 +198,7 @@ def parse_tweet(tweet):
             # If #any then make a OR query
             else:
                 query = check_for_any(query)
-    return (query, sort, random, illustrated, article_id, categories, hello)
+    return (query, sort, random, illustrated, article_id, category, hello)
 
 
 def get_article_by_id(article_id):
@@ -196,7 +207,7 @@ def get_article_by_id(article_id):
         'key': api_key,
         'reclevel': 'full'
     }
-    response = requests.get('https://api.trove.nla.gov.au/newspaper/{}'.format(article_id), params=params)
+    response = s.get('https://api.trove.nla.gov.au/v2/newspaper/{}'.format(article_id), params=params)
     data = response.json()
     try:
         article = data['article']
@@ -205,34 +216,16 @@ def get_article_by_id(article_id):
     return article
 
 
-def reply_article(query, sort, random, illustrated, categories):
-    trove_url = None
+def reply_article(query=None, sort=None, random=None, illustrated=None, category=None):
     if not random:
-        article = get_article(query, random=random, sort=sort, illustrated=illustrated, categories=categories)
+        article = get_article(query=query, sort=sort, illustrated=illustrated, category=category)
     else:
-        retries = 0
-        # This is to filter out 'Coming soon' articles with no url
-        while not trove_url:
-            if retries < 60:
-                article = get_article(query, random=random, sort=sort, illustrated=illustrated, categories=categories)
-                # On error or no results
-                if article is None:
-                    break
-                # Check if there's a url
-                # If not try again
-                try:
-                    trove_url = article['troveUrl']
-                except (KeyError, TypeError):
-                    pass
-                    time.sleep(1)
-                    retries += 1
-            else:
-                article = None
-                break
+        article = get_random_article(query=query, illustrated=illustrated, category=category)
     return article
 
 
 def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=False):
+    print(illustrated)
     if article:
         url = 'http://nla.gov.au/nla.news-article{}'.format(article['id'])
         thumbnail = get_page_thumbnail(article['id'], 800, illustrated=illustrated)
@@ -258,13 +251,14 @@ def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=Fals
         media_ids = []
     print(status)
     if tweet_id:
-        #pass
+        # pass
         api.update_status('@{} {}'.format(user, status), media_ids=media_ids, in_reply_to_status_id=tweet_id)
     else:
-        #pass
+        # pass
         api.update_status(status, media_ids=media_ids)
     try:
         os.remove(thumbnail)
+        # pass
     except FileNotFoundError:
         pass
 
@@ -297,7 +291,7 @@ def get_random_newspaper(decade, illustrated):
     return params
 
 
-def get_random_decade(illustrated=False, categories=['Article']):
+def get_random_decade(illustrated=False, category='Article'):
     params = {
         'q': ' ',
         'zone': 'newspaper',
@@ -332,34 +326,24 @@ def get_start(params):
     return random.randint(0, total)
 
 
-def get_article(query, random=False, start=0, sort='relevance', illustrated=False, categories=[]):
+def get_article(query=None, random=False, start=0, sort='relevance', illustrated=False, category=None):
     '''
     Search for an article from Trove using the supplied parameters.
     '''
-    if query:
-        params = {
-            'q': query,
-            'zone': 'newspaper',
-            'encoding': 'json',
-            'n': 1,
-            'sortby': sort,
-            'key': api_key
-        }
-        if illustrated:
-            params['l-illustrated'] = 'y'
-        for category in categories:
-            params['l-category'] = category
-    if random:
-        if query:
-            start = get_start(params)
-            params['s'] = start
-            params['reclevel'] = 'full'
-        else:
-            params = get_random_decade(illustrated=illustrated, categories=['Article'])
-            params['reclevel'] = 'full'
-    print(params)
+    params = {
+        'q': query,
+        'zone': 'newspaper',
+        'encoding': 'json',
+        'n': 1,
+        'sortby': sort,
+        'key': api_key
+    }
+    if illustrated:
+        params['l-illustrated'] = 'true'
+    if category:
+        params['l-category'] = category
     try:
-        response = requests.get('https://api.trove.nla.gov.au/result', params=params, timeout=60)
+        response = s.get(API_URL, params=params, timeout=60)
         response.raise_for_status()
     except requests.exceptions.RequestException:
         article = None
@@ -381,7 +365,119 @@ def random_tweet():
     send_tweet(article, message=message, illustrated=illustrated)
 
 
-def random_article(illustrated=False, categories=[]):
+def get_random_facet_value(params, facet):
+    '''
+    Get values for the supplied facet and choose one at random.
+    '''
+    these_params = params.copy()
+    these_params['facet'] = facet
+    response = s.get(API_URL, params=these_params)
+    data = response.json()
+    try:
+        values = [t['search'] for t in data['response']['zone'][0]['facets']['facet']['term']]
+    except TypeError:
+        return None
+    return random.choice(values)
+
+
+def get_total_results(params):
+    response = s.get(API_URL, params=params)
+    data = response.json()
+    total = int(data['response']['zone'][0]['records']['total'])
+    return total
+
+
+def get_random_article(query=None, **kwargs):
+    '''
+    Get a random article.
+    The kwargs can be any of the available facets, such as 'state', 'title', 'illtype', 'year'.
+    '''
+    total = 0
+    applied_facets = []
+    facets = ['month', 'year', 'decade', 'word', 'illustrated', 'category', 'title']
+    tries = 0
+    params = {
+        'zone': 'newspaper',
+        'encoding': 'json',
+        # Note that keeping n at 0 until we've filtered the result set speeds things up considerably
+        'n': '0',
+        # Uncomment these if you need more than the basic data
+        'reclevel': 'full',
+        #'include': 'articleText',
+        'key': api_key
+    }
+    if query:
+        params['q'] = query
+    # If there's no query supplied then use a random stopword to mix up the results
+    else:
+        random_word = random.choice(STOPWORDS)
+        params['q'] = f'"{random_word}"'
+    # Apply any supplied factes
+    for key, value in kwargs.items():
+        if value:
+            params[f'l-{key}'] = value
+            applied_facets.append(key)
+    # Remove any facets that have already been applied from the list of available facets
+    facets[:] = [f for f in facets if f not in applied_facets]
+    total = get_total_results(params)
+    # If our randomly selected stopword has produced no results
+    # keep trying with new queries until we get some (give up after 10 tries)
+    while total == 0 and tries <= 10:
+        if not query:
+            random_word = random.choice(STOPWORDS)
+            params['q'] = f'"{random_word}"'
+        tries += 1
+    # Apply facets one at a time until we have less than 100 results, or we run out of facets
+    while total > 100 and len(facets) > 0:
+        # Get the next facet
+        facet = facets.pop()
+        # Set the facet to a randomly selected value
+        params[f'l-{facet}'] = get_random_facet_value(params, facet)
+        total = get_total_results(params)
+        #print(total)
+        #print(response.url)
+    # If we've ended up with some results, then select one (of the first 100) at random
+    if total > 0:
+        params['n'] = '100'
+        response = s.get(API_URL, params=params)
+        data = response.json()
+        article = random.choice(data['response']['zone'][0]['records']['article'])
+        print(response.url)
+        return article
+
+def random_article(illustrated=None, category=None):
+    # Options for random searches
+    options = ['updated', 'any', 'illustrated']
+    option = random.choice(options)
+    print(option)
+    # If user has specified illustrated - then make sure it's illustrated no matter what option chosen
+    if illustrated == 'true':
+        query = None
+    elif option == 'updated':
+        # Get articles modified in the last day
+        now = arrow.utcnow()
+        yesterday = now.shift(days=-1)
+        date = f'{yesterday.format("YYYY-MM-DD")}T00:00:00Z'
+        query = f'lastupdated:[{date} TO *]'
+    elif option == 'any':
+        query = None
+        category = 'Article'
+    elif option == 'illustrated':
+        query = None
+        illustrated = 'true'
+    article = get_random_article(query=query, illustrated=illustrated, category=category)
+    if article:
+        if query and int(article['correctionCount']) > 0:
+            message = 'Updated!'
+        elif query:
+            message = 'New!'
+        else:
+            message = 'Found!'
+    else:
+        message = 'Error! I was unable to obtain an article!'
+    return (article, message, illustrated)
+
+def random_article_old(illustrated=False, categories=[]):
     # Options for random searches
     options = ['updated', 'any', 'illustrated']
     option = random.choice(options)
@@ -469,7 +565,7 @@ def get_illustration(zone):
 def get_article_box(article_url, illustrated=False):
     '''
     Positional information about the article is attached to each line of the OCR output in data attributes.
-    This function loads the HTML version of the article and scrapes the x, y, and width values for each line of text 
+    This function loads the HTML version of the article and scrapes the x, y, and width values for each line of text
     to determine the coordinates of a box around the article.
     '''
     response = requests.get(article_url)
@@ -477,7 +573,7 @@ def get_article_box(article_url, illustrated=False):
     # Lines of OCR are in divs with the class 'zone'
     # 'onPage' limits to those on the current page
     illustrations = soup.select('div.illustration.onPage')
-    if illustrations and illustrated is True:
+    if illustrations and illustrated == 'true':
         zone = illustrations[0].parent
         box = get_illustration(zone)
     else:
@@ -508,7 +604,7 @@ def get_page_thumbnail(article_id, size, illustrated=False):
     if size:
         cropped.thumbnail((size, size), Image.ANTIALIAS)
     # Save and display thumbnail
-    cropped_file = 'nla.news-article{}-{}.jpg'.format(article_id, box['page_id'])
+    cropped_file = f'nla.news-article{article_id}-{box["page_id"]}.jpg'
     cropped.save(cropped_file)
     return cropped_file
 
@@ -524,19 +620,7 @@ def reply_abc():
     if latest_url != last_url:
         redis_client.set('last_{}_link'.format(feed['source']), latest_url)
         query = get_url_keywords(latest_url)
-        retries = 0
-        while not trove_url:
-            if retries < 60:
-                article = get_article(query)
-                try:
-                    trove_url = article['troveUrl']
-                except (KeyError, TypeError):
-                    pass
-                retries += 1
-                time.sleep(1)
-            else:
-                article = None
-                break
+        article = get_article(query)
         if article:
             message = 'Found in response to {} latest at {}!'.format(feed['handle'], latest_url)
             send_tweet(article, message, user=None, tweet_id=None, illustrated=False)
