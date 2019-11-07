@@ -48,6 +48,7 @@ NEWS_FEEDS = [
     }
 ]
 
+# Needed to run via cron
 path = os.path.dirname(os.path.realpath(__file__))
 json_path = Path(path, 'stopwords.json')
 with json_path.open() as json_file:
@@ -254,11 +255,11 @@ def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=Fals
         media_ids = []
     print(status)
     if tweet_id:
-        pass
-        #api.update_status('@{} {}'.format(user, status), media_ids=media_ids, in_reply_to_status_id=tweet_id)
+        #pass
+        api.update_status('@{} {}'.format(user, status), media_ids=media_ids, in_reply_to_status_id=tweet_id)
     else:
-        pass
-        #api.update_status(status, media_ids=media_ids)
+        #pass
+        api.update_status(status, media_ids=media_ids)
     try:
         os.remove(thumbnail)
         # pass
