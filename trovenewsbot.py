@@ -229,7 +229,6 @@ def reply_article(query=None, sort=None, random=None, illustrated=None, category
 
 
 def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=False):
-    print(illustrated)
     if article:
         url = 'http://nla.gov.au/nla.news-article{}'.format(article['id'])
         thumbnail = get_page_thumbnail(article['id'], 800, illustrated=illustrated)
@@ -265,69 +264,6 @@ def send_tweet(article, message=None, user=None, tweet_id=None, illustrated=Fals
         # pass
     except FileNotFoundError:
         pass
-
-
-def get_random_year():
-    year = random.randint(START_YEAR, END_YEAR)
-    return 'date:[{0} TO {0}]'.format(year)
-
-
-def get_random_newspaper(decade, illustrated):
-    params = {
-        'q': ' ',
-        'zone': 'newspaper',
-        'l-category': 'Article',
-        'l-decade': decade,
-        'encoding': 'json',
-        'facet': 'title',
-        'key': api_key
-    }
-    if illustrated:
-        params['l-illustrated'] = 'y'
-    response = requests.get('https://api.trove.nla.gov.au/result', params=params)
-    data = response.json()
-    titles = data['response']['zone'][0]['facets']['facet']['term']
-    title = random.choice(titles)
-    start = random.randint(0, int(title['count']))
-    params.pop('facet')
-    params['l-title'] = title['search']
-    params['s'] = start
-    return params
-
-
-def get_random_decade(illustrated=False, category='Article'):
-    params = {
-        'q': ' ',
-        'zone': 'newspaper',
-        'encoding': 'json',
-        'facet': 'decade',
-        'key': api_key
-    }
-    if illustrated:
-        params['l-illustrated'] = 'y'
-    for category in categories:
-        params['l-category'] = category
-    response = requests.get('https://api.trove.nla.gov.au/result', params=params)
-    data = response.json()
-    decades = data['response']['zone'][0]['facets']['facet']['term']
-    decade = random.choice(decades)
-    params.pop('facet')
-    if int(decade['count']) > 500000:
-        params = get_random_newspaper(decade['search'], illustrated)
-    else:
-        start = random.randint(0, int(decade['count']))
-        params['s'] = start
-        params['l-decade'] = decade['search']
-    return params
-
-
-def get_start(params):
-    response = requests.get('https://api.trove.nla.gov.au/result', params=params)
-    print(response.url)
-    data = response.json()
-    total = int(data['response']['zone'][0]['records']['total'])
-    print(total)
-    return random.randint(0, total)
 
 
 def get_article(query=None, random=False, start=0, sort='relevance', illustrated=False, category=None):
@@ -446,14 +382,13 @@ def get_random_article(query=None, **kwargs):
         response = s.get(API_URL, params=params)
         data = response.json()
         article = random.choice(data['response']['zone'][0]['records']['article'])
-        print(response.url)
         return article
+
 
 def random_article(illustrated=None, category=None):
     # Options for random searches
     options = ['updated', 'any', 'illustrated']
     option = random.choice(options)
-    print(option)
     # If user has specified illustrated - then make sure it's illustrated no matter what option chosen
     if illustrated == 'true':
         query = None
@@ -470,54 +405,6 @@ def random_article(illustrated=None, category=None):
         query = None
         illustrated = 'true'
     article = get_random_article(query=query, illustrated=illustrated, category=category)
-    if article:
-        if query and int(article['correctionCount']) > 0:
-            message = 'Updated!'
-        elif query:
-            message = 'New!'
-        else:
-            message = 'Found!'
-    else:
-        message = 'Error! I was unable to obtain an article!'
-    return (article, message, illustrated)
-
-def random_article_old(illustrated=False, categories=[]):
-    # Options for random searches
-    options = ['updated', 'any', 'illustrated']
-    option = random.choice(options)
-    print(option)
-    # If user has specified illustrated - then make sure it's illustrated no matter what option chosen
-    if illustrated is True:
-        query = None
-    elif option == 'updated':
-        # Get articles modified in the last day
-        now = arrow.utcnow()
-        yesterday = now.shift(days=-1)
-        date = '{}T00:00:00Z'.format(yesterday.format('YYYY-MM-DD'))
-        query = 'lastupdated:[{} TO *]'.format(date)
-    elif option == 'any':
-        query = None
-    elif option == 'illustrated':
-        query = None
-        illustrated = True
-    trove_url = None
-    retries = 0
-    while not trove_url:
-        if retries < 60:
-            article = get_article(query, random=True, illustrated=illustrated, categories=categories)
-            # On error or no results
-            if article is None:
-                break
-            # Check if there's a url
-            # If not try again
-            try:
-                trove_url = article['troveUrl']
-            except (KeyError, TypeError):
-                time.sleep(1)
-                retries += 1
-        else:
-            article = None
-            break
     if article:
         if query and int(article['correctionCount']) > 0:
             message = 'Updated!'
