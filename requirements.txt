@@ -1,7 +1,7 @@
 arrow==0.14.2
 beautifulsoup4==4.7.1
 feedparser==5.2.1
-lxml==4.3.3
+lxml==4.6.2
 newspaper3k==0.2.8
 Pillow==6.0.0
 redis==3.2.1
