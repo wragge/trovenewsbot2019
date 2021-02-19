@@ -48,6 +48,10 @@ NEWS_FEEDS = [
     }
 ]
 
+YEAR_WEIGHTS = [526, 619, 430, 367, 134, 155, 237, 274, 228, 215, 234, 239, 226, 644, 1068, 1249, 1152, 1275, 1005, 1033, 1156, 1646, 3366, 5201, 6537, 6726, 8320, 8369, 10311, 13732, 15438, 18704, 20389, 20553, 21697, 25191, 31159, 40450, 43583, 44264, 45968, 51377, 60228, 58794, 59503, 60302, 59698, 78726, 93422, 77328, 89716, 111809, 152862, 165260, 167962, 170506, 192157, 203666, 222964, 231360, 236359, 250078, 270535, 286531, 294045, 301851, 323274, 368748, 357135, 381901, 419226, 434680, 465013, 476043, 497516, 567221, 605369, 620926, 663699, 743779, 766454, 852461, 908552, 992953, 1041609, 1160131, 1250597, 1356077, 1427624, 1484823, 1508559, 1552223, 1669993, 1787172, 1905923, 2124671, 2288907, 2523395, 2602286, 2663426, 2702366, 2866915, 3000008, 3048635, 3199578, 3296233, 3362224, 3596134, 3723366, 3875109, 3941035, 4637240, 4734766, 4329234, 4222288, 3999161, 3465955, 3226966, 3421136, 3548802, 3821708, 4110330, 4071865, 4049429, 4091342, 4174298, 4394891, 4247140, 3875921, 3858694, 4038925, 4153655, 4239521, 4357842, 4347202, 4341890, 4111150, 3481754, 3069593, 2454729, 2157464, 2204004, 2383297, 2691127, 2761582, 2532349, 2774027, 2773410, 2545264, 2603173, 2740557, 2760489, 268108, 188227, 107562, 107205, 101445, 96585, 90804, 90335, 99386, 100159, 104089, 101623, 100151, 103228, 126638, 144978, 143623, 140004, 140814, 139333, 126640, 126766, 131615, 136424, 141521, 139625, 118490, 110437, 106222, 110141, 117442, 115748, 114579, 123014, 126366, 129253, 131719, 132977, 137916, 133386, 132401, 47101, 49822, 56947, 67005, 33593, 32343, 33030, 14655, 12731, 7875, 6943, 7210, 6170, 5762, 5794, 5386, 4832, 4904, 4718, 4819, 1422, 1094, 1100, 1153]
+
+YEARS = list(range(1803, 2020))
+
 # Needed to run via cron
 path = os.path.dirname(os.path.realpath(__file__))
 json_path = Path(path, 'stopwords.json')
@@ -85,15 +89,36 @@ def check_for_any(query):
     return query
 
 
+def set_date_to_today(year):
+    now = arrow.now('Australia/Canberra')
+    current_year = now.year
+    # Go back to the chosen year
+    end = now.shift(years=(year-current_year))
+    # Subtract an extra day for the start of the date range
+    start = end.shift(days=-1)
+    # Format the query
+    return 'date:[{}Z TO {}Z]'.format(start.format('YYYY-MM-DDT00:00:00'), end.format('YYYY-MM-DDT00:00:00'))
+
+
 def extract_date(query):
     query = query.replace('#year', '').strip()
     try:
         year = re.search(r'(\b\d{4}\b)', query).group(1)
     except AttributeError:
-        date_param = ''
+        # No year
+        if '#onthisday' in query:
+            query = query.replace('#onthisday', '').strip()
+            year = random.choices(YEARS, weights=YEAR_WEIGHTS)[0]
+            date_param = set_date_to_today(year)
+        else:
+            date_param = ''
     else:
         query = query.replace(year, '').strip()
-        date_param = 'date:[{0} TO {0}]'.format(year)
+        if '#onthisday' in query:
+            query = query.replace('#onthisday', '').strip()
+            date_param = set_date_to_today(year)
+        else:
+            date_param = 'date:[{0} TO {0}]'.format(year)
         query = check_for_any(query)
     return ' '.join([query, date_param])
 
@@ -300,8 +325,8 @@ def get_article(query=None, random=False, start=0, sort='relevance', illustrated
     return article
 
 
-def random_tweet():
-    article, message, illustrated = random_article()
+def random_tweet(option=None):
+    article, message, illustrated = random_article(option=option)
     send_tweet(article, message=message, illustrated=illustrated)
 
 
@@ -385,10 +410,11 @@ def get_random_article(query=None, **kwargs):
         return article
 
 
-def random_article(illustrated=None, category=None):
+def random_article(illustrated=None, category=None, option=None):
     # Options for random searches
     options = ['updated', 'any', 'illustrated']
-    option = random.choice(options)
+    if not option:
+        option = random.choice(options)
     # If user has specified illustrated - then make sure it's illustrated no matter what option chosen
     if illustrated == 'true':
         query = None
@@ -404,9 +430,16 @@ def random_article(illustrated=None, category=None):
     elif option == 'illustrated':
         query = None
         illustrated = 'true'
+    elif option == 'onthisday':
+        year = random.choices(YEARS, weights=YEAR_WEIGHTS)[0]
+        query = set_date_to_today(year)
+        category = 'Article'
     article = get_random_article(query=query, illustrated=illustrated, category=category)
     if article:
-        if query and int(article['correctionCount']) > 0:
+        if option == 'onthisday':
+            current_year = arrow.now('Australia/Canberra').year
+            message = f'On this day {current_year - year} years ago!'
+        elif query and int(article['correctionCount']) > 0:
             message = 'Updated!'
         elif query:
             message = 'New!'
@@ -522,5 +555,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     if args.task == 'random':
         random_tweet()
+    elif args.task == 'onthisday':
+        random_tweet(option='onthisday')
     elif args.task == 'abc':
         reply_abc()
