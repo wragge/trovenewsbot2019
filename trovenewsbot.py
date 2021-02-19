@@ -116,7 +116,7 @@ def extract_date(query):
         query = query.replace(year, '').strip()
         if '#onthisday' in query:
             query = query.replace('#onthisday', '').strip()
-            date_param = set_date_to_today(year)
+            date_param = set_date_to_today(int(year))
         else:
             date_param = 'date:[{0} TO {0}]'.format(year)
         query = check_for_any(query)
