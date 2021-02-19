@@ -46,6 +46,7 @@ You can filter your results by using the following hashtags:
 * `#advertising` – only include results in the 'Advertising' category
 * `#year` – if you include this hashtag *and* a year in your tweet, @TroveNewsBot will limit the results to articles published in that year.
 * `#illustrated` – only include articles that have illustrations
+* `#onthisday` – get an article published on today's date in the past
 
 Examples:
 
