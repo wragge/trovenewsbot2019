@@ -222,7 +222,7 @@ def parse_tweet(tweet):
             query = get_url_keywords(url)
         else:
             # Check if there's a year, if so add date limit to search
-            if '#year' in query:
+            if '#year' in query or '#onthisday' in query:
                 query = extract_date(query)
             # If #any then make a OR query
             else:
