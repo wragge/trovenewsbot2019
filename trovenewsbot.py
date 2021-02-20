@@ -178,7 +178,7 @@ def parse_tweet(tweet):
     article_id = None
     category = None
     sort = 'relevance'
-    query = tweet['text'].strip()
+    query = tweet['text'].strip().lower()
     # Remove @trovenewsbot from tweet
     query = re.sub(r'\@trovenewsbot', '', query, flags=re.IGNORECASE).strip()
     query = query.replace(u'\u201c', '"').replace(u'\u201d', '"').replace(u'\u2019', "'")
