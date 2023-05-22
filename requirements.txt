@@ -5,7 +5,7 @@ lxml==4.3.3
 newspaper3k==0.2.8
 Pillow==6.0.0
 redis==3.2.1
-requests==2.22.0
+requests==2.31.0
 rq==1.0
 tweepy==3.7.0
 
